@@ -35,9 +35,11 @@ import (
 	"expvar"
 	"flag"
 	"http"
+	"io"
 	"log"
 	"os"
 	"strings"
+	"template"
 )
 
 var store *CassandraStore
@@ -45,18 +47,31 @@ var num_requests *expvar.Int = expvar.NewInt("num-requests")
 var num_redirects *expvar.Int = expvar.NewInt("num-redirects")
 var num_notfounds *expvar.Int = expvar.NewInt("num-notfounds")
 
+var fmap = template.FormatterMap{
+	"html": template.HTMLFormatter,
+	"url": UserInputFormatter,
+}
+var templ = template.MustParseFile("templates/notfound.tmpl", fmap)
+
+func UserInputFormatter(w io.Writer, fmt string, v ...interface{}) {
+	template.HTMLEscape(w, []byte(http.URLEscape(v[0].(string))))
+}
+
 func Goto(w http.ResponseWriter, req *http.Request) {
 	var shorturl string = strings.Split(req.URL.Path, "/", -1)[1]
 
 	num_requests.Add(1)
 
-	if shorturl != "" {
+	if shorturl == "" {
+	} else {
 		var dest string = store.LookupURL(shorturl)
 		if dest == "" {
+			w.WriteHeader(http.StatusNotFound)
+			templ.Execute(w, shorturl)
 			num_notfounds.Add(1)
 		} else {
 			w.Header().Add("Location", dest)
-			w.WriteHeader(302)
+			w.WriteHeader(http.StatusFound)
 			num_redirects.Add(1)
 		}
 	}
