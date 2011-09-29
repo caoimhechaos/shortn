@@ -32,10 +32,14 @@
 package main;
 
 import (
+	"crypto/ripemd160"
+	"encoding/base64"
 	"expvar"
+	"hash"
 	"log"
 	"net"
 	"os"
+	"time"
 	"thrift"
 	"thriftlib/Cassandra"
 )
@@ -61,7 +65,7 @@ func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
 	conn.Corpus = corpus
 	conn.ProtocolFactory = thrift.NewTBinaryProtocolFactoryDefault()
 	conn.TransportFactory = thrift.NewTFramedTransportFactory(thrift.NewTTransportFactory())
-	conn.Addr, err = net.ResolveTCPAddr(servaddr)
+	conn.Addr, err = net.ResolveTCPAddr("tcp", servaddr)
 
 	if err != nil {
 		log.Print("Error opening connection for protocol ", conn.Addr.Network(),
@@ -93,7 +97,7 @@ func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
 	return conn
 }
 
-func (conn CassandraStore) LookupURL(shortname string) string {
+func (conn *CassandraStore) LookupURL(shortname string) string {
 	col, ire, nfe, ue, te, err := conn.Client.Get(shortname, conn.Path, Cassandra.ONE)
 
 	if col == nil {
@@ -126,4 +130,81 @@ func (conn CassandraStore) LookupURL(shortname string) string {
 
 	num_found.Add(1)
 	return col.Column.Value
+}
+
+func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err os.Error) {
+	var col Cassandra.Column
+	var cp Cassandra.ColumnParent
+	var rmd hash.Hash = ripemd160.New()
+	var digest string
+
+	_, err = rmd.Write([]byte(url))
+	if err != nil {
+		return
+	}
+
+	digest = base64.URLEncoding.EncodeToString(rmd.Sum())
+	shorturl = digest[0:7]
+
+	cp.ColumnFamily = conn.Corpus
+	cp.SuperColumn__isset = false
+
+	col.Name = "url"
+	col.Value = url
+	col.Timestamp = time.Nanoseconds()
+	col.Ttl__isset = false
+
+	ire, ue, te, err := conn.Client.Insert(shorturl, &cp, &col, Cassandra.ONE)
+	if ire != nil {
+		log.Println("Invalid request: ", ire.Why)
+		num_errors.Add("invalid-request", 1)
+		err = os.NewError(ire.String())
+		return
+	}
+	if ue != nil {
+		log.Println("Unavailable")
+		num_errors.Add("unavailable", 1)
+		err = os.NewError(ue.String())
+		return
+	}
+	if te != nil {
+		log.Println("Request to database backend timed out")
+		num_errors.Add("timeout", 1)
+		err = os.NewError(te.String())
+		return
+	}
+	if err != nil {
+		log.Println("Generic error: ", err)
+		num_errors.Add("os-error", 1)
+		err = os.NewError(err.String())
+		return
+	}
+	col.Name = "owner"
+	col.Value = owner
+	ire, ue, te, err = conn.Client.Insert(shorturl, &cp, &col, Cassandra.ONE)
+	if ire != nil {
+		log.Println("Invalid request: ", ire.Why)
+		num_errors.Add("invalid-request", 1)
+		err = os.NewError(ire.String())
+		return
+	}
+	if ue != nil {
+		log.Println("Unavailable")
+		num_errors.Add("unavailable", 1)
+		err = os.NewError(ue.String())
+		return
+	}
+	if te != nil {
+		log.Println("Request to database backend timed out")
+		num_errors.Add("timeout", 1)
+		err = os.NewError(te.String())
+		return
+	}
+	if err != nil {
+		log.Println("Generic error: ", err)
+		num_errors.Add("os-error", 1)
+		err = os.NewError(err.String())
+		return
+	}
+	return
 }
