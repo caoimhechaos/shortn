@@ -154,6 +154,7 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err os.E
 	col.Timestamp = time.Nanoseconds()
 	col.Ttl__isset = false
 
+	// TODO(caoimhe): Use a mutation pool and locking here!
 	ire, ue, te, err := conn.Client.Insert(shorturl, &cp, &col, Cassandra.ONE)
 	if ire != nil {
 		log.Println("Invalid request: ", ire.Why)
@@ -206,5 +207,5 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err os.E
 		err = os.NewError(err.String())
 		return
 	}
-	return
+	return "/" + shorturl, nil
 }
