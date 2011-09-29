@@ -66,6 +66,7 @@ func UserInputFormatter(w io.Writer, fmt string, v ...interface{}) {
 
 func Shortn(w http.ResponseWriter, req *http.Request) {
 	var shorturl string = strings.Split(req.URL.Path, "/")[1]
+	var templ_vars = make(map[string]string)
 	var err os.Error
 
 	num_requests.Add(1)
@@ -73,12 +74,14 @@ func Shortn(w http.ResponseWriter, req *http.Request) {
 	if shorturl == "" {
 		/* People need to be logged in in order to add URLs. */
 		var user string = authenticator.GetAuthenticatedUser(req)
-		var newurl string
 
+		// TODO(caoimhe): Count errors properly here.
 		if user == "" {
 			authenticator.RequestAuthorization(w, req)
 			return
 		}
+
+		templ_vars["user"] = user
 
 		err = req.ParseForm()
 		if err != nil {
@@ -87,17 +90,32 @@ func Shortn(w http.ResponseWriter, req *http.Request) {
 		}
 
 		if req.FormValue("urltoadd") != "" {
-			newurl, err = store.AddURL(req.FormValue("urltoadd"), user)
+			var newurl *http.URL
+			newurl, err = http.ParseURLReference(req.RawURL)
+			if err != nil {
+				error_templ.Execute(w, err.String())
+				return
+			}
+
+			if req.TLS != nil {
+				newurl.Scheme = "https"
+			} else {
+				newurl.Scheme = "http"
+			}
+
+			newurl.Host = req.Host
+			newurl.Path, err = store.AddURL(req.FormValue("urltoadd"), user)
 			if err != nil {
 				error_templ.Execute(w, err.String())
 				return
 			}
 			num_edits.Add(1)
-			done_templ.Execute(w, newurl)
+			templ_vars["url"] = newurl.String()
+			done_templ.Execute(w, templ_vars)
 			return
 		}
 
-		addurl_templ.Execute(w, nil)
+		addurl_templ.Execute(w, templ_vars)
 	} else {
 		var dest string = store.LookupURL(shorturl)
 
