@@ -35,12 +35,12 @@ import (
 	"ancientauth"
 	"expvar"
 	"flag"
-	"http"
-	"io"
 	"log"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
-	"template"
+	"text/template"
 )
 
 var store *CassandraStore
@@ -50,24 +50,24 @@ var num_edits *expvar.Int = expvar.NewInt("num-edits")
 var num_redirects *expvar.Int = expvar.NewInt("num-redirects")
 var num_notfounds *expvar.Int = expvar.NewInt("num-notfounds")
 
-var fmap = template.FormatterMap{
-	"html": template.HTMLFormatter,
+var fmap = template.FuncMap{
+	"html": template.HTMLEscaper,
 	"url":  UserInputFormatter,
 }
-var addurl_templ = template.MustParseFile("templates/addurl.tmpl", fmap)
-var done_templ = template.MustParseFile("templates/added.tmpl", fmap)
-var error_templ = template.MustParseFile("templates/error.tmpl", fmap)
-var fourohfour_templ = template.MustParseFile("templates/notfound.tmpl", fmap)
+var addurl_templ = template.Must(template.ParseFiles("templates/addurl.tmpl"))
+var done_templ = template.Must(template.ParseFiles("templates/added.tmpl"))
+var error_templ = template.Must(template.ParseFiles("templates/error.tmpl"))
+var fourohfour_templ = template.Must(template.ParseFiles("templates/notfound.tmpl"))
 var authenticator *ancientauth.Authenticator
 
-func UserInputFormatter(w io.Writer, fmt string, v ...interface{}) {
-	template.HTMLEscape(w, []byte(http.URLEscape(v[0].(string))))
+func UserInputFormatter(v ...interface{}) string {
+	return template.HTMLEscapeString(url.QueryEscape(v[0].(string)))
 }
 
 func Shortn(w http.ResponseWriter, req *http.Request) {
 	var shorturl string = strings.Split(req.URL.Path, "/")[1]
 	var templ_vars = make(map[string]string)
-	var err os.Error
+	var err error
 
 	num_requests.Add(1)
 
@@ -85,15 +85,15 @@ func Shortn(w http.ResponseWriter, req *http.Request) {
 
 		err = req.ParseForm()
 		if err != nil {
-			error_templ.Execute(w, err.String())
+			error_templ.Execute(w, err.Error())
 			return
 		}
 
 		if req.FormValue("urltoadd") != "" {
-			var newurl *http.URL
-			newurl, err = http.ParseURLReference(req.RawURL)
+			var newurl *url.URL
+			newurl, err = url.Parse(req.URL.String())
 			if err != nil {
-				error_templ.Execute(w, err.String())
+				error_templ.Execute(w, err.Error())
 				return
 			}
 
@@ -104,9 +104,10 @@ func Shortn(w http.ResponseWriter, req *http.Request) {
 			}
 
 			newurl.Host = req.Host
-			newurl.Path, err = store.AddURL(req.FormValue("urltoadd"), user)
+			newurl.Path, err =
+				store.AddURL(req.FormValue("urltoadd"), user)
 			if err != nil {
-				error_templ.Execute(w, err.String())
+				error_templ.Execute(w, err.Error())
 				return
 			}
 			num_edits.Add(1)
@@ -138,7 +139,7 @@ func main() {
 	var cassandra_server, corpus string
 	var ca, pub, priv, authserver string
 	var bindto string
-	var err os.Error
+	var err error
 
 	flag.BoolVar(&help, "help", false, "Display help")
 	flag.StringVar(&bindto, "bind", "[::]:80",
@@ -162,6 +163,10 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	addurl_templ.Funcs(fmap)
+	done_templ.Funcs(fmap)
+	error_templ.Funcs(fmap)
+	fourohfour_templ.Funcs(fmap)
 
 	authenticator, err = ancientauth.NewAuthenticator("URL Shortener", pub, priv, ca, authserver)
 	if err != nil {
