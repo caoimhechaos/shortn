@@ -29,30 +29,31 @@
  * OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
-package main;
+package main
 
 import (
-	"crypto/ripemd160"
+	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"expvar"
 	"hash"
 	"log"
 	"net"
 	"os"
-	"time"
 	"thrift"
 	"thriftlib/Cassandra"
+	"time"
 )
 
 type CassandraStore struct {
-	Addr *net.TCPAddr;
-	Client *Cassandra.CassandraClient;
-	Corpus string;
-	Path *Cassandra.ColumnPath;
-	ProtocolFactory *thrift.TBinaryProtocolFactory;
-	Socket *thrift.TSocket;
-	TransportFactory thrift.TTransportFactory;
-	Transport thrift.TTransport;
+	Addr             *net.TCPAddr
+	Client           *Cassandra.CassandraClient
+	Corpus           string
+	Path             *Cassandra.ColumnPath
+	ProtocolFactory  *thrift.TBinaryProtocolFactory
+	Socket           *thrift.TSocket
+	TransportFactory thrift.TTransportFactory
+	Transport        thrift.TTransport
 }
 
 var num_notfound *expvar.Int = expvar.NewInt("cassandra-not-found")
@@ -60,7 +61,7 @@ var num_errors *expvar.Map = expvar.NewMap("cassandra-errors")
 var num_found *expvar.Int = expvar.NewInt("cassandra-found")
 
 func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
-	var err os.Error
+	var err error
 	conn := new(CassandraStore)
 	conn.Corpus = corpus
 	conn.ProtocolFactory = thrift.NewTBinaryProtocolFactoryDefault()
@@ -69,36 +70,38 @@ func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
 
 	if err != nil {
 		log.Print("Error opening connection for protocol ", conn.Addr.Network(),
-			" to ", conn.Addr.String(), ": ", err.String(), "\n")
+			" to ", conn.Addr.String(), ": ", err.Error(), "\n")
 		return nil
 	}
 
 	conn.Socket = thrift.NewTSocketAddr(conn.Addr)
 	if err = conn.Socket.Open(); err != nil {
-		log.Print("Error opening connection for protocol ", conn.Addr.Network(),
-			" to ", conn.Addr.String(), ": ", err.String(), "\n")
+		log.Print("Error opening connection for protocol ",
+			conn.Addr.Network(), " to ", conn.Addr.String(), ": ",
+			err.Error(), "\n")
 		return nil
 	}
 
 	conn.Transport = conn.TransportFactory.GetTransport(conn.Socket)
-	conn.Client = Cassandra.NewCassandraClientFactory(conn.Transport, conn.ProtocolFactory)
+	conn.Client = Cassandra.NewCassandraClientFactory(conn.Transport,
+		conn.ProtocolFactory)
 
 	if _, err = conn.Client.SetKeyspace("shortn"); err != nil {
-		log.Print("Error setting keyspace: ", err.String(), "\n")
+		log.Print("Error setting keyspace: ", err.Error(), "\n")
 		os.Exit(2)
 	}
 
 	conn.Path = Cassandra.NewColumnPath()
 	conn.Path.ColumnFamily = corpus
-	conn.Path.SuperColumn__isset = false
-	conn.Path.Column = "url"
-	conn.Path.Column__isset = true
+	conn.Path.SuperColumn = nil
+	conn.Path.Column = []byte("url")
 
 	return conn
 }
 
 func (conn *CassandraStore) LookupURL(shortname string) string {
-	col, ire, nfe, ue, te, err := conn.Client.Get(shortname, conn.Path, Cassandra.ONE)
+	col, ire, nfe, ue, te, err := conn.Client.Get([]byte(shortname),
+		conn.Path, Cassandra.ONE)
 
 	if col == nil {
 		if ire != nil {
@@ -121,7 +124,7 @@ func (conn *CassandraStore) LookupURL(shortname string) string {
 		}
 
 		if err != nil {
-			log.Print("Error getting column: ", err.String(), "\n")
+			log.Print("Error getting column: ", err.Error(), "\n")
 			num_errors.Add("os-error", 1)
 		}
 
@@ -129,13 +132,13 @@ func (conn *CassandraStore) LookupURL(shortname string) string {
 	}
 
 	num_found.Add(1)
-	return col.Column.Value
+	return string(col.Column.Value)
 }
 
-func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err os.Error) {
+func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err error) {
 	var col Cassandra.Column
 	var cp Cassandra.ColumnParent
-	var rmd hash.Hash = ripemd160.New()
+	var rmd hash.Hash = sha256.New()
 	var digest string
 
 	_, err = rmd.Write([]byte(url))
@@ -143,68 +146,70 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err os.E
 		return
 	}
 
-	digest = base64.URLEncoding.EncodeToString(rmd.Sum())
+	digest = base64.URLEncoding.EncodeToString(rmd.Sum(nil))
 	shorturl = digest[0:7]
 
 	cp.ColumnFamily = conn.Corpus
-	cp.SuperColumn__isset = false
+	cp.SuperColumn = nil
 
-	col.Name = "url"
-	col.Value = url
-	col.Timestamp = time.Nanoseconds()
-	col.Ttl__isset = false
+	col.Name = []byte("url")
+	col.Value = []byte(url)
+	col.Timestamp = time.Now().Unix()
+	col.Ttl = 0
 
 	// TODO(tonnerre): Use a mutation pool and locking here!
-	ire, ue, te, err := conn.Client.Insert(shorturl, &cp, &col, Cassandra.ONE)
+	ire, ue, te, err := conn.Client.Insert([]byte(shorturl), &cp, &col,
+		Cassandra.ONE)
 	if ire != nil {
 		log.Println("Invalid request: ", ire.Why)
 		num_errors.Add("invalid-request", 1)
-		err = os.NewError(ire.String())
+		err = errors.New(ire.String())
 		return
 	}
 	if ue != nil {
 		log.Println("Unavailable")
 		num_errors.Add("unavailable", 1)
-		err = os.NewError(ue.String())
+		err = errors.New(ue.String())
 		return
 	}
 	if te != nil {
 		log.Println("Request to database backend timed out")
 		num_errors.Add("timeout", 1)
-		err = os.NewError(te.String())
+		err = errors.New(te.String())
 		return
 	}
 	if err != nil {
 		log.Println("Generic error: ", err)
 		num_errors.Add("os-error", 1)
-		err = os.NewError(err.String())
+		err = errors.New(err.Error())
 		return
 	}
-	col.Name = "owner"
-	col.Value = owner
-	ire, ue, te, err = conn.Client.Insert(shorturl, &cp, &col, Cassandra.ONE)
+	col.Name = []byte("owner")
+	col.Value = []byte(owner)
+	ire, ue, te, err = conn.Client.Insert([]byte(shorturl), &cp, &col,
+		Cassandra.ONE)
 	if ire != nil {
 		log.Println("Invalid request: ", ire.Why)
 		num_errors.Add("invalid-request", 1)
-		err = os.NewError(ire.String())
+		err = errors.New(ire.String())
 		return
 	}
 	if ue != nil {
 		log.Println("Unavailable")
 		num_errors.Add("unavailable", 1)
-		err = os.NewError(ue.String())
+		err = errors.New(ue.String())
 		return
 	}
 	if te != nil {
 		log.Println("Request to database backend timed out")
 		num_errors.Add("timeout", 1)
-		err = os.NewError(te.String())
+		err = errors.New(te.String())
 		return
 	}
 	if err != nil {
 		log.Println("Generic error: ", err)
 		num_errors.Add("os-error", 1)
-		err = os.NewError(err.String())
+		err = errors.New(err.Error())
 		return
 	}
 	return "/" + shorturl, nil
