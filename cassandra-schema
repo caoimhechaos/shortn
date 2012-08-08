@@ -1,0 +1,3 @@
+create keyspace shortn;
+use shortn;
+create column family links with comparator = 'AsciiType' and column_metadata = [{column_name: url, validation_class: AsciiType, index_type: 0}, {column_name: owner, validation_class: AsciiType, index_type: 0}];
