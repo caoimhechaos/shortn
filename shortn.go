@@ -54,10 +54,10 @@ var fmap = template.FuncMap{
 	"html": template.HTMLEscaper,
 	"url":  UserInputFormatter,
 }
-var addurl_templ = template.Must(template.ParseFiles("templates/addurl.tmpl"))
-var done_templ = template.Must(template.ParseFiles("templates/added.tmpl"))
-var error_templ = template.Must(template.ParseFiles("templates/error.tmpl"))
-var fourohfour_templ = template.Must(template.ParseFiles("templates/notfound.tmpl"))
+var addurl_templ *template.Template
+var done_templ *template.Template
+var error_templ *template.Template
+var fourohfour_templ *template.Template
 var authenticator *ancientauth.Authenticator
 
 func UserInputFormatter(v ...interface{}) string {
@@ -163,9 +163,13 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
+	addurl_templ = template.Must(template.ParseFiles("templates/addurl.tmpl"))
 	addurl_templ.Funcs(fmap)
+	done_templ = template.Must(template.ParseFiles("templates/added.tmpl"))
 	done_templ.Funcs(fmap)
+	error_templ = template.Must(template.ParseFiles("templates/error.tmpl"))
 	error_templ.Funcs(fmap)
+	fourohfour_templ = template.Must(template.ParseFiles("templates/notfound.tmpl"))
 	fourohfour_templ.Funcs(fmap)
 
 	authenticator, err = ancientauth.NewAuthenticator("URL Shortener", pub, priv, ca, authserver)
