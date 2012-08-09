@@ -138,7 +138,7 @@ func main() {
 	var help bool
 	var cassandra_server, corpus string
 	var ca, pub, priv, authserver string
-	var bindto string
+	var bindto, templatedir string
 	var err error
 
 	flag.BoolVar(&help, "help", false, "Display help")
@@ -154,6 +154,8 @@ func main() {
 		"Path to the X.509 certificate")
 	flag.StringVar(&priv, "key", "shortn.key",
 		"Path to the X.509 private key file")
+	flag.StringVar(&templatedir, "template-dir", "/var/www/templates",
+		"Path to the HTML templates for the web interface")
 	flag.StringVar(&authserver, "auth-server",
 		"login.ancient-solutions.com",
 		"The server to send the user to")
@@ -163,13 +165,17 @@ func main() {
 		flag.Usage()
 		os.Exit(1)
 	}
-	addurl_templ = template.Must(template.ParseFiles("templates/addurl.tmpl"))
+	addurl_templ = template.Must(template.ParseFiles(templatedir +
+		"/addurl.tmpl"))
 	addurl_templ.Funcs(fmap)
-	done_templ = template.Must(template.ParseFiles("templates/added.tmpl"))
+	done_templ = template.Must(template.ParseFiles(templatedir +
+		"/added.tmpl"))
 	done_templ.Funcs(fmap)
-	error_templ = template.Must(template.ParseFiles("templates/error.tmpl"))
+	error_templ = template.Must(template.ParseFiles(templatedir +
+		"/error.tmpl"))
 	error_templ.Funcs(fmap)
-	fourohfour_templ = template.Must(template.ParseFiles("templates/notfound.tmpl"))
+	fourohfour_templ = template.Must(template.ParseFiles(templatedir +
+		"/notfound.tmpl"))
 	fourohfour_templ.Funcs(fmap)
 
 	authenticator, err = ancientauth.NewAuthenticator("URL Shortener", pub, priv, ca, authserver)
