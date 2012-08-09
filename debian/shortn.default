@@ -1,0 +1,4 @@
+#
+# SHORTN_FLAGS specifies the flags to pass to the shortn binary.
+#
+SHORTN_FLAGS=""

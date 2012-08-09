@@ -1,0 +1,72 @@
+#! /bin/sh
+### BEGIN INIT INFO
+# Provides:		shortn
+# Required-Start:	$remote_fs $syslog
+# Required-Stop:	$remote_fs $syslog
+# Should-Start:		$named
+# Should-Stop:		$named
+# Default-Start:	2 3 4 5
+# Default-Stop:		0 1 6
+# Short-Description:	URL shortener
+# Description:		URL shortener with open authentication
+### END INIT INFO
+#
+# shortn - URL shortener with open authentication
+
+PATH=/sbin:/bin:/usr/sbin:/usr/bin
+DAEMON=/usr/bin/shortn
+DESC="shortn URL shortener"
+NAME=shortn
+
+# Exit if the daemon does not exist (anymore)
+test -f $DAEMON || exit 0
+
+. /lib/lsb/init-functions
+
+# Check if shortn is configured or not
+if [ ! -f "/etc/default/${NAME}" ]
+then
+	log_failure_msg "/etc/default/${NAME} not found"
+	exit 1
+fi
+
+. "/etc/default/${NAME}"
+
+# The real work of an init script
+case "$1" in
+start)
+	log_daemon_msg "Starting $DESC" "$NAME"
+	start_daemon /usr/bin/run-as-daemon -l =logger	\
+		-p "/var/run/${NAME}.pid" -- $DAEMON $SHORTN_FLAGS
+	log_end_msg $?
+	;;
+stop)
+	log_daemon_msg "Stopping $DESC" "$NAME"
+	kill $(cat "/var/run/${NAME}.pid")
+	log_end_msg $?
+	;;
+restart|force-reload)
+	log_daemon_msg "Restarting $DESC" "$NAME"
+	kill $(cat "/var/run/${NAME}.pid")
+	start_daemon /usr/bin/run-as-daemon -l =logger	\
+		-p "/var/run/${NAME}.pid" -- $DAEMON $SHORTN_FLAGS
+	echo "."
+	;;
+status)
+	pidofproc $DAEMON >/dev/null
+	status=$?
+	if [ $status -eq 0 ]; then
+		log_success_msg "$NAME is running"
+	else
+		log_success_msg "$NAME is not running"
+	fi
+	exit $status
+	;;
+*)
+	echo "Usage: $0 {start|stop|restart|force-reload|status}"
+	exit 1
+	;;
+esac
+
+# Fallthrough if work done.
+exit 0
