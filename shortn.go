@@ -32,7 +32,8 @@
 package main
 
 import (
-	"ancientauth"
+	"ancientsolutions.com/ancientauth"
+	"ancientsolutions.com/doozer/exportedservice"
 	"expvar"
 	"flag"
 	"log"
@@ -138,7 +139,9 @@ func main() {
 	var help bool
 	var cassandra_server, corpus string
 	var ca, pub, priv, authserver string
-	var bindto, templatedir string
+	var bindto, templatedir, servicename string
+	var doozer_uri, doozer_buri string
+	var exporter *exportedservice.ServiceExporter
 	var err error
 
 	flag.BoolVar(&help, "help", false, "Display help")
@@ -159,6 +162,13 @@ func main() {
 	flag.StringVar(&authserver, "auth-server",
 		"login.ancient-solutions.com",
 		"The server to send the user to")
+	flag.StringVar(&doozer_uri, "doozer-uri", os.Getenv("DOOZER_URI"),
+		"Doozer URI to connect to")
+	flag.StringVar(&doozer_buri, "doozer-boot-uri",
+		os.Getenv("DOOZER_BOOT_URI"),
+		"Doozer Boot URI to find named clusters")
+	flag.StringVar(&servicename, "exported-name", "",
+		"Name to export the service as in Doozer")
 	flag.Parse()
 
 	if help {
@@ -178,7 +188,8 @@ func main() {
 		"/notfound.tmpl"))
 	fourohfour_templ.Funcs(fmap)
 
-	authenticator, err = ancientauth.NewAuthenticator("URL Shortener", pub, priv, ca, authserver)
+	authenticator, err = ancientauth.NewAuthenticator("URL Shortener", pub,
+		priv, ca, authserver)
 	if err != nil {
 		log.Fatal("NewAuthenticator: ", err)
 	}
@@ -189,8 +200,22 @@ func main() {
 
 	http.Handle("/", http.HandlerFunc(Shortn))
 
-	err = http.ListenAndServe(bindto, nil)
-	if err != nil {
-		log.Fatal("ListenAndServe:", err)
+	if len(servicename) > 0 {
+		exporter, err = exportedservice.NewExporter(doozer_uri,
+			doozer_buri)
+		if err != nil {
+			log.Fatal("NewExporter: ", err)
+		}
+
+		err = exporter.ListenAndServeNamedHTTP(servicename, bindto,
+			http.HandlerFunc(Shortn))
+		if err != nil {
+			log.Fatal("ListenAndServeNamedHTTP: ", err)
+		}
+	} else {
+		err = http.ListenAndServe(bindto, nil)
+		if err != nil {
+			log.Fatal("ListenAndServe: ", err)
+		}
 	}
 }
