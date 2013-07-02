@@ -154,7 +154,7 @@ func main() {
 		"Path to the X.509 certificate")
 	flag.StringVar(&priv, "key", "shortn.key",
 		"Path to the X.509 private key file")
-	flag.StringVar(&templatedir, "template-dir", "/var/www/templates",
+	flag.StringVar(&templatedir, "template-dir", "/usr/share/shortn/templates",
 		"Path to the HTML templates for the web interface")
 	flag.StringVar(&authserver, "auth-server",
 		"login.ancient-solutions.com",
