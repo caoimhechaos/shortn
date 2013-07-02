@@ -1,5 +1,12 @@
+shortn (0.8-1) unstable; urgency=low
+
+  * Support exported ports
+
+ -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Wed, 03 Jul 2013 01:45:22 +0200
+
 shortn (0.7-1) unstable; urgency=low
 
   * Initial release
 
  -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Thu, 09 Aug 2012 11:14:43 +0200
+
