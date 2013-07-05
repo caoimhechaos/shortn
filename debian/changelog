@@ -1,3 +1,9 @@
+shortn (0.9-1) unstable; urgency=low
+
+  * Fix login with exported ports.
+
+ -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Sat, 06 Jul 2013 01:49:06 +0200
+
 shortn (0.8-1) unstable; urgency=low
 
   * Support exported ports
