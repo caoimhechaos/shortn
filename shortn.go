@@ -208,7 +208,7 @@ func main() {
 		}
 
 		err = exporter.ListenAndServeNamedHTTP(servicename, bindto,
-			http.HandlerFunc(Shortn))
+			nil)
 		if err != nil {
 			log.Fatal("ListenAndServeNamedHTTP: ", err)
 		}
