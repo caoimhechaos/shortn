@@ -1,3 +1,10 @@
+shortn (0.9-2) unstable; urgency=low
+
+  * Add a check to the init script because it will otherwise just run another
+    shortn instance
+
+ -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Tue, 09 Jul 2013 23:01:14 +0200
+
 shortn (0.9-1) unstable; urgency=low
 
   * Fix login with exported ports.
