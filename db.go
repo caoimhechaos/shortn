@@ -33,27 +33,27 @@ package main
 
 import (
 	"crypto/sha256"
+	"database/cassandra"
 	"encoding/base64"
 	"errors"
 	"expvar"
+	"git.apache.org/thrift.git/lib/go/thrift"
 	"hash"
 	"log"
-	"net"
-	"os"
-	"thrift"
-	"thriftlib/Cassandra"
+	"sync"
 	"time"
 )
 
 type CassandraStore struct {
-	Addr             *net.TCPAddr
-	Client           *Cassandra.CassandraClient
-	Corpus           string
-	Path             *Cassandra.ColumnPath
-	ProtocolFactory  *thrift.TBinaryProtocolFactory
-	Socket           *thrift.TSocket
-	TransportFactory thrift.TTransportFactory
-	Transport        thrift.TTransport
+	client           *cassandra.CassandraClient
+	addr             string
+	corpus           string
+	path             *cassandra.ColumnPath
+	protocolFactory  *thrift.TBinaryProtocolFactory
+	socket           *thrift.TSocket
+	transportFactory thrift.TTransportFactory
+	transport        thrift.TTransport
+	mtx              sync.RWMutex
 }
 
 var num_notfound *expvar.Int = expvar.NewInt("cassandra-not-found")
@@ -62,46 +62,82 @@ var num_found *expvar.Int = expvar.NewInt("cassandra-found")
 
 func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
 	var err error
-	conn := new(CassandraStore)
-	conn.Corpus = corpus
-	conn.ProtocolFactory = thrift.NewTBinaryProtocolFactoryDefault()
-	conn.TransportFactory = thrift.NewTFramedTransportFactory(thrift.NewTTransportFactory())
-	conn.Addr, err = net.ResolveTCPAddr("tcp", servaddr)
+	var socket *thrift.TSocket
 
+	socket, err = thrift.NewTSocket(servaddr)
 	if err != nil {
-		log.Print("Error opening connection for protocol ", conn.Addr.Network(),
-			" to ", conn.Addr.String(), ": ", err.Error(), "\n")
+		log.Print("Error opening connection to ", servaddr, ": ", err)
 		return nil
 	}
 
-	conn.Socket = thrift.NewTSocketAddr(conn.Addr)
-	if err = conn.Socket.Open(); err != nil {
-		log.Print("Error opening connection for protocol ",
-			conn.Addr.Network(), " to ", conn.Addr.String(), ": ",
-			err.Error(), "\n")
+	conn := &CassandraStore{
+		corpus: corpus,
+		addr: servaddr,
+		protocolFactory: thrift.NewTBinaryProtocolFactoryDefault(),
+		socket: socket,
+		transportFactory: thrift.NewTFramedTransportFactory(thrift.NewTTransportFactory()),
+	}
+	if err = conn.Initialize(); err != nil {
 		return nil
 	}
-
-	conn.Transport = conn.TransportFactory.GetTransport(conn.Socket)
-	conn.Client = Cassandra.NewCassandraClientFactory(conn.Transport,
-		conn.ProtocolFactory)
-
-	if _, err = conn.Client.SetKeyspace("shortn"); err != nil {
-		log.Print("Error setting keyspace: ", err.Error(), "\n")
-		os.Exit(2)
-	}
-
-	conn.Path = Cassandra.NewColumnPath()
-	conn.Path.ColumnFamily = corpus
-	conn.Path.SuperColumn = nil
-	conn.Path.Column = []byte("url")
 
 	return conn
 }
 
+func (conn *CassandraStore) Initialize() error {
+	var err error
+
+	// Ensure we're undisturbed.
+	conn.mtx.Lock()
+	defer conn.mtx.Unlock()
+
+	// It's possible that someone else discovered the disconnection before.
+	if conn.socket.IsOpen() {
+		return nil
+	}
+
+	if err = conn.socket.Open(); err != nil {
+		log.Print("Error opening connection to ", conn.addr, ": ",
+			err.Error(), "\n")
+		return err
+	}
+
+	conn.transport = conn.transportFactory.GetTransport(conn.socket)
+	conn.client = cassandra.NewCassandraClientFactory(conn.transport,
+		conn.protocolFactory)
+
+	if _, err = conn.client.SetKeyspace("shortn"); err != nil {
+		log.Print("Error setting keyspace: ", err.Error(), "\n")
+		return err
+	}
+
+	conn.path = cassandra.NewColumnPath()
+	conn.path.ColumnFamily = conn.corpus
+	conn.path.SuperColumn = nil
+	conn.path.Column = []byte("url")
+	return nil
+}
+
 func (conn *CassandraStore) LookupURL(shortname string) string {
-	col, ire, nfe, ue, te, err := conn.Client.Get([]byte(shortname),
-		conn.Path, Cassandra.ONE)
+	var err error
+
+	// Ensure the connection is not currently being initialized.
+	conn.mtx.RLock()
+
+	// If the connection is broken, reinitialize it.
+	for !conn.socket.IsOpen() {
+		conn.mtx.RUnlock()
+		err = conn.Initialize()
+		for err != nil {
+			log.Print("Retrying...")
+			err = conn.Initialize()
+		}
+		conn.mtx.RLock()
+	}
+	defer conn.mtx.RUnlock()
+
+	col, ire, nfe, ue, te, err := conn.client.Get([]byte(shortname),
+		conn.path, cassandra.ConsistencyLevel_ONE)
 
 	if col == nil {
 		if ire != nil {
@@ -136,8 +172,8 @@ func (conn *CassandraStore) LookupURL(shortname string) string {
 }
 
 func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err error) {
-	var col Cassandra.Column
-	var cp Cassandra.ColumnParent
+	var col cassandra.Column
+	var cp cassandra.ColumnParent
 	var rmd hash.Hash = sha256.New()
 	var digest string
 
@@ -149,7 +185,7 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err erro
 	digest = base64.URLEncoding.EncodeToString(rmd.Sum(nil))
 	shorturl = digest[0:7]
 
-	cp.ColumnFamily = conn.Corpus
+	cp.ColumnFamily = conn.corpus
 	cp.SuperColumn = nil
 
 	col.Name = []byte("url")
@@ -157,9 +193,24 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err erro
 	col.Timestamp = time.Now().Unix()
 	col.Ttl = 0
 
+	// Ensure the connection is not currently being initialized.
+	conn.mtx.RLock()
+
+	// If the connection is broken, reinitialize it.
+	for !conn.socket.IsOpen() {
+		conn.mtx.RUnlock()
+		err = conn.Initialize()
+		for err != nil {
+			log.Print("Retrying...")
+			err = conn.Initialize()
+		}
+		conn.mtx.RLock()
+	}
+	defer conn.mtx.RUnlock()
+
 	// TODO(tonnerre): Use a mutation pool and locking here!
-	ire, ue, te, err := conn.Client.Insert([]byte(shorturl), &cp, &col,
-		Cassandra.ONE)
+	ire, ue, te, err := conn.client.Insert([]byte(shorturl), &cp, &col,
+		cassandra.ConsistencyLevel_ONE)
 	if ire != nil {
 		log.Println("Invalid request: ", ire.Why)
 		num_errors.Add("invalid-request", 1)
@@ -186,8 +237,8 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err erro
 	}
 	col.Name = []byte("owner")
 	col.Value = []byte(owner)
-	ire, ue, te, err = conn.Client.Insert([]byte(shorturl), &cp, &col,
-		Cassandra.ONE)
+	ire, ue, te, err = conn.client.Insert([]byte(shorturl), &cp, &col,
+		cassandra.ConsistencyLevel_ONE)
 	if ire != nil {
 		log.Println("Invalid request: ", ire.Why)
 		num_errors.Add("invalid-request", 1)

@@ -32,8 +32,8 @@
 package main
 
 import (
-	"ancientsolutions.com/ancientauth"
-	"ancientsolutions.com/doozer/exportedservice"
+	"ancient-solutions.com/ancientauth"
+	"ancient-solutions.com/doozer/exportedservice"
 	"expvar"
 	"flag"
 	"log"
