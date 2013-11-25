@@ -41,8 +41,8 @@ import (
 	"strings"
 	"text/template"
 
-	"ancientsolutions.com/ancientauth"
-	"ancientsolutions.com/doozer/exportedservice"
+	"ancient-solutions.com/ancientauth"
+	"ancient-solutions.com/doozer/exportedservice"
 )
 
 var store *CassandraStore
