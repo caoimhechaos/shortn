@@ -39,6 +39,7 @@ import (
 	"expvar"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"hash"
+	"io"
 	"log"
 	"sync"
 	"time"
@@ -91,10 +92,8 @@ func (conn *CassandraStore) Initialize() error {
 	conn.mtx.Lock()
 	defer conn.mtx.Unlock()
 
-	// It's possible that someone else discovered the disconnection before.
-	if conn.socket.IsOpen() {
-		return nil
-	}
+	// TODO(tonnerre): It's possible that someone else discovered the
+	// disconnection before.
 
 	if err = conn.socket.Open(); err != nil {
 		log.Print("Error opening connection to ", conn.addr, ": ",
@@ -119,21 +118,23 @@ func (conn *CassandraStore) Initialize() error {
 }
 
 func (conn *CassandraStore) LookupURL(shortname string) string {
+	var url string
 	var err error
 
+	url, err = conn.doLookupURL(shortname)
+	if err != nil && err.Error() == io.EOF.Error() {
+		log.Print("EOF encountered, reconnecting...")
+		conn.socket.Close()
+		conn.Initialize()
+		url, _ = conn.doLookupURL(shortname)
+	}
+
+	return url
+}
+
+func (conn *CassandraStore) doLookupURL(shortname string) (string, error) {
 	// Ensure the connection is not currently being initialized.
 	conn.mtx.RLock()
-
-	// If the connection is broken, reinitialize it.
-	for !conn.socket.IsOpen() {
-		conn.mtx.RUnlock()
-		err = conn.Initialize()
-		for err != nil {
-			log.Print("Retrying...")
-			err = conn.Initialize()
-		}
-		conn.mtx.RLock()
-	}
 	defer conn.mtx.RUnlock()
 
 	col, ire, nfe, ue, te, err := conn.client.Get([]byte(shortname),
@@ -143,35 +144,52 @@ func (conn *CassandraStore) LookupURL(shortname string) string {
 		if ire != nil {
 			log.Println("Invalid request: ", ire.Why)
 			num_errors.Add("invalid-request", 1)
+			return "", errors.New(ire.Why)
 		}
 
 		if nfe != nil {
 			num_notfound.Add(1)
+			return "", nil
 		}
 
 		if ue != nil {
 			log.Println("Unavailable")
 			num_errors.Add("unavailable", 1)
+			return "", errors.New("Unavailable")
 		}
 
 		if te != nil {
 			log.Println("Request to database backend timed out")
 			num_errors.Add("timeout", 1)
+			return "", errors.New("Timed out")
 		}
 
 		if err != nil {
 			log.Print("Error getting column: ", err.Error(), "\n")
 			num_errors.Add("os-error", 1)
+			return "", err
 		}
 
-		return ""
+		return "", nil
 	}
 
 	num_found.Add(1)
-	return string(col.Column.Value)
+	return string(col.Column.Value), nil
 }
 
 func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err error) {
+	shorturl, err = conn.doAddURL(url, owner)
+	if err != nil && err.Error() == io.EOF.Error() {
+		log.Print("EOF encountered, reconnecting...")
+		conn.socket.Close()
+		conn.Initialize()
+		shorturl, err = conn.doAddURL(url, owner)
+	}
+
+	return shorturl, err
+}
+
+func (conn *CassandraStore) doAddURL(url, owner string) (shorturl string, err error) {
 	var col cassandra.Column
 	var cp cassandra.ColumnParent
 	var rmd hash.Hash = sha256.New()
@@ -195,17 +213,6 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err erro
 
 	// Ensure the connection is not currently being initialized.
 	conn.mtx.RLock()
-
-	// If the connection is broken, reinitialize it.
-	for !conn.socket.IsOpen() {
-		conn.mtx.RUnlock()
-		err = conn.Initialize()
-		for err != nil {
-			log.Print("Retrying...")
-			err = conn.Initialize()
-		}
-		conn.mtx.RLock()
-	}
 	defer conn.mtx.RUnlock()
 
 	// TODO(tonnerre): Use a mutation pool and locking here!
