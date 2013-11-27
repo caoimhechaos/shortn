@@ -1,3 +1,9 @@
+shortn (0.10-1) unstable; urgency=low
+
+  * Fix the retry logic so we don't just get EOF after Cassandra restarted.
+
+ -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Tue, 26 Nov 2013 00:23:50 +0100
+
 shortn (0.9-2) unstable; urgency=low
 
   * Add a check to the init script because it will otherwise just run another
