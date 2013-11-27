@@ -2,8 +2,9 @@ Source: shortn
 Section: httpd
 Priority: extra
 Maintainer: Caoimhe Chaos <caoimhechaos@protonmail.com>
-Build-Depends: debhelper (>= 8.0.0), golang-go, go-thriftlib-cassandra
-Standards-Version: 3.9.3
+Build-Depends: debhelper (>= 9), golang-go, dh-golang, golang-cassandra-dev,
+ golang-ancientauth-dev, golang-doozer-exportedservice-dev (>= 0.3~rc1)
+Standards-Version: 3.9.4
 Homepage: http://shortn.ancient-solutions.com/
 Vcs-Git: http://git.ancient-solutions.com/golang/shortn.git
 Vcs-Browser: http://git.ancient-solutions.com/cgi-bin/gitweb.cgi?p=golang/shortn.git;a=summary
