@@ -23,14 +23,8 @@ test -f $DAEMON || exit 0
 
 . /lib/lsb/init-functions
 
-# Check if shortn is configured or not
-if [ ! -f "/etc/default/${NAME}" ]
-then
-	log_failure_msg "/etc/default/${NAME} not found"
-	exit 1
-fi
-
-. "/etc/default/${NAME}"
+SHORTN_FLAGS=""
+[ -f "/etc/default/${NAME}" ] && . "/etc/default/${NAME}"
 
 # The real work of an init script
 case "$1" in
