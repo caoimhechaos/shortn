@@ -119,7 +119,12 @@ func Shortn(w http.ResponseWriter, req *http.Request) {
 
 		addurl_templ.Execute(w, templ_vars)
 	} else {
-		var dest string = store.LookupURL(shorturl)
+		var dest string
+		dest, err = store.LookupURL(shorturl)
+		if err != nil {
+			error_templ.Execute(w, err.Error())
+			return
+		}
 
 		num_views.Add(1)
 
