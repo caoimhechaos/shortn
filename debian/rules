@@ -8,15 +8,15 @@ export DH_VERBOSE=1
 export DH_GOPKG := ancient-solutions.com/apps/shortn
 
 override_dh_auto_install:
-	install -o root -g 0 -m 0755 -d \
+	install -o root -g 0 -m 0555 -d \
 		$(CURDIR)/debian/shortn/usr/share/shortn/templates
-	install -o root -g 0 -m 0755 $(CURDIR)/templates/added.tmpl \
+	install -o root -g 0 -m 0444 $(CURDIR)/templates/added.tmpl \
 		$(CURDIR)/debian/shortn/usr/share/shortn/templates
-	install -o root -g 0 -m 0755 $(CURDIR)/templates/addurl.tmpl \
+	install -o root -g 0 -m 0444 $(CURDIR)/templates/addurl.tmpl \
 		$(CURDIR)/debian/shortn/usr/share/shortn/templates
-	install -o root -g 0 -m 0755 $(CURDIR)/templates/error.tmpl \
+	install -o root -g 0 -m 0444 $(CURDIR)/templates/error.tmpl \
 		$(CURDIR)/debian/shortn/usr/share/shortn/templates
-	install -o root -g 0 -m 0755 $(CURDIR)/templates/notfound.tmpl \
+	install -o root -g 0 -m 0444 $(CURDIR)/templates/notfound.tmpl \
 		$(CURDIR)/debian/shortn/usr/share/shortn/templates
 	dh_auto_install -O--buildsystem=golang
 
