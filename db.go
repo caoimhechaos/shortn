@@ -38,24 +38,14 @@ import (
 	"errors"
 	"expvar"
 	"hash"
-	"io"
 	"log"
-	"sync"
 	"time"
-
-	"git.apache.org/thrift.git/lib/go/thrift"
 )
 
 type CassandraStore struct {
-	client           *cassandra.CassandraClient
-	addr             string
-	corpus           string
-	path             *cassandra.ColumnPath
-	protocolFactory  *thrift.TBinaryProtocolFactory
-	socket           *thrift.TSocket
-	transportFactory thrift.TTransportFactory
-	transport        thrift.TTransport
-	mtx              sync.RWMutex
+	client *cassandra.RetryCassandraClient
+	corpus string
+	path   *cassandra.ColumnPath
 }
 
 var num_notfound *expvar.Int = expvar.NewInt("cassandra-not-found")
@@ -64,80 +54,40 @@ var num_found *expvar.Int = expvar.NewInt("cassandra-found")
 
 func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
 	var err error
-	var socket *thrift.TSocket
+	var client *cassandra.RetryCassandraClient
+	var path *cassandra.ColumnPath
 
-	socket, err = thrift.NewTSocket(servaddr)
+	client, err = cassandra.NewRetryCassandraClient(servaddr)
 	if err != nil {
 		log.Print("Error opening connection to ", servaddr, ": ", err)
 		return nil
 	}
 
-	conn := &CassandraStore{
-		corpus:           corpus,
-		addr:             servaddr,
-		protocolFactory:  thrift.NewTBinaryProtocolFactoryDefault(),
-		socket:           socket,
-		transportFactory: thrift.NewTFramedTransportFactory(thrift.NewTTransportFactory()),
+	ire, err := client.SetKeyspace(corpus)
+	if ire != nil {
+		log.Print("Error setting keyspace to ", corpus, ": ", ire.Why)
+		return nil
 	}
-	if err = conn.Initialize(); err != nil {
+	if err != nil {
+		log.Print("Error setting keyspace to ", corpus, ": ", err)
 		return nil
 	}
 
+	path = cassandra.NewColumnPath()
+	path.ColumnFamily = corpus
+	path.SuperColumn = nil
+	path.Column = []byte("url")
+
+	conn := &CassandraStore{
+		client: client,
+		corpus: corpus,
+		path:   path,
+	}
 	return conn
 }
 
-func (conn *CassandraStore) Initialize() error {
-	var err error
-
-	// Ensure we're undisturbed.
-	conn.mtx.Lock()
-	defer conn.mtx.Unlock()
-
-	// TODO(caoimhe): It's possible that someone else discovered the
-	// disconnection before.
-
-	if err = conn.socket.Open(); err != nil {
-		log.Print("Error opening connection to ", conn.addr, ": ",
-			err.Error(), "\n")
-		return err
-	}
-
-	conn.transport = conn.transportFactory.GetTransport(conn.socket)
-	conn.client = cassandra.NewCassandraClientFactory(conn.transport,
-		conn.protocolFactory)
-
-	if _, err = conn.client.SetKeyspace("shortn"); err != nil {
-		log.Print("Error setting keyspace: ", err.Error(), "\n")
-		return err
-	}
-
-	conn.path = cassandra.NewColumnPath()
-	conn.path.ColumnFamily = conn.corpus
-	conn.path.SuperColumn = nil
-	conn.path.Column = []byte("url")
-	return nil
-}
-
-func (conn *CassandraStore) LookupURL(shortname string) string {
-	var url string
-	var err error
-
-	url, err = conn.doLookupURL(shortname)
-	if err != nil && err.Error() == io.EOF.Error() {
-		log.Print("EOF encountered, reconnecting...")
-		conn.socket.Close()
-		conn.Initialize()
-		url, _ = conn.doLookupURL(shortname)
-	}
-
-	return url
-}
-
-func (conn *CassandraStore) doLookupURL(shortname string) (string, error) {
+func (conn *CassandraStore) LookupURL(shortname string) (string, error) {
 	// Ensure the connection is not currently being initialized.
-	conn.mtx.RLock()
-	defer conn.mtx.RUnlock()
-
 	col, ire, nfe, ue, te, err := conn.client.Get([]byte(shortname),
 		conn.path, cassandra.ConsistencyLevel_ONE)
 
@@ -179,18 +129,6 @@ func (conn *CassandraStore) doLookupURL(shortname string) (string, error) {
 }
 
 func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err error) {
-	shorturl, err = conn.doAddURL(url, owner)
-	if err != nil && err.Error() == io.EOF.Error() {
-		log.Print("EOF encountered, reconnecting...")
-		conn.socket.Close()
-		conn.Initialize()
-		shorturl, err = conn.doAddURL(url, owner)
-	}
-
-	return shorturl, err
-}
-
-func (conn *CassandraStore) doAddURL(url, owner string) (shorturl string, err error) {
 	var col cassandra.Column
 	var cp cassandra.ColumnParent
 	var rmd hash.Hash = sha256.New()
@@ -211,10 +149,6 @@ func (conn *CassandraStore) doAddURL(url, owner string) (shorturl string, err er
 	col.Value = []byte(url)
 	col.Timestamp = time.Now().Unix()
 	col.Ttl = 0
-
-	// Ensure the connection is not currently being initialized.
-	conn.mtx.RLock()
-	defer conn.mtx.RUnlock()
 
 	// TODO(caoimhe): Use a mutation pool and locking here!
 	ire, ue, te, err := conn.client.Insert([]byte(shorturl), &cp, &col,
