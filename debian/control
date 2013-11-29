@@ -12,7 +12,7 @@ Vcs-Browser: http://git.ancient-solutions.com/cgi-bin/gitweb.cgi?p=golang/shortn
 Package: shortn
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, run-as-daemon
-Description: HTTP server implementing an URL shortener.
+Description: HTTP server implementing an URL shortener
  In order to add URLs, users must be authenticated using AncientAuth.
  Currently, anybody on the internet can follow short links, there is
  no access control mechanism yet.
