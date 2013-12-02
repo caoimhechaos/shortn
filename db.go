@@ -52,7 +52,7 @@ var num_notfound *expvar.Int = expvar.NewInt("cassandra-not-found")
 var num_errors *expvar.Map = expvar.NewMap("cassandra-errors")
 var num_found *expvar.Int = expvar.NewInt("cassandra-found")
 
-func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
+func NewCassandraStore(servaddr string, keyspace, corpus string) *CassandraStore {
 	var err error
 	var client *cassandra.RetryCassandraClient
 	var path *cassandra.ColumnPath
@@ -64,7 +64,7 @@ func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
 		return nil
 	}
 
-	ire, err := client.SetKeyspace(corpus)
+	ire, err := client.SetKeyspace(keyspace)
 	if ire != nil {
 		log.Print("Error setting keyspace to ", corpus, ": ", ire.Why)
 		return nil

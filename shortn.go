@@ -143,7 +143,7 @@ func Shortn(w http.ResponseWriter, req *http.Request) {
 
 func main() {
 	var help bool
-	var cassandra_server, corpus string
+	var cassandra_server, keyspace, corpus string
 	var ca, pub, priv, authserver string
 	var bindto, templatedir, servicename string
 	var doozer_uri, doozer_buri string
@@ -155,6 +155,9 @@ func main() {
 		"The address to bind the web server to")
 	flag.StringVar(&cassandra_server, "cassandra-server", "localhost:9160",
 		"The Cassandra database server to use")
+	flag.StringVar(&keyspace, "keyspace", "shortn",
+		"The Cassandra keyspace the links are stored in. "+
+			"The default should be fine.")
 	flag.StringVar(&corpus, "corpus", "links",
 		"The column family containing the short links for this service")
 	flag.StringVar(&ca, "cacert", "cacert.pem",
@@ -200,7 +203,8 @@ func main() {
 		log.Fatal("NewAuthenticator: ", err)
 	}
 
-	if store = NewCassandraStore(cassandra_server, corpus); store == nil {
+	store = NewCassandraStore(cassandra_server, keyspace, corpus)
+	if store == nil {
 		os.Exit(2)
 	}
 
