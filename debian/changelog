@@ -1,3 +1,10 @@
+shortn (0.11-1) unstable; urgency=low
+
+  * Set the timeout for Cassandra connections to 10 seconds.
+  * Make the keyspace and column family separately configurable.
+
+ -- Caoimhe Chaos <caoimhechaos@protonmail.com>  Mon, 02 Dec 2013 02:14:19 +0100
+
 shortn (0.10.1-1) unstable; urgency=low
 
   * Use the retry Cassandra library client rather than retrying manually.
