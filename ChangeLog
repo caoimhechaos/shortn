@@ -1,0 +1,2 @@
+== 0.11 / 2013-12-02
+* bugfix: i/o timeout when connecting to Cassandra
