@@ -1,0 +1,29 @@
+--- !ditz.rubyforge.org,2008-03-06/issue 
+title: i/o timeout when connecting to Cassandra
+desc: |-
+  Starting from the 0.10 release, connections to the database server appear to time out immediately:
+  
+  Dec  1 23:11:37 zh1 shortn[31910]: 2013/12/02 00:11:37 Error opening connection to db.l.internetputzen.com:9160: dial tcp [2001:1620:2034:0:216:35ff:fe5a:ad88]:9160: i/o timeout
+  
+  tcpdump reveals that there is no time between establishing and terminating the connection:
+  
+  23:47:15.985913 IP6 zh1.prod.internetputzen.com.52535 > db2.zrh.internetputzen.com.9160: Flags [S], seq 3004007397, win 5760, options [mss 1440,sackOK,TS val 3563370021 ecr 0,nop,wscale 5], length 0
+  23:47:15.990188 IP6 db2.zrh.internetputzen.com.9160 > zh1.prod.internetputzen.com.52535: Flags [S.], seq 4182119377, ack 3004007398, win 5712, options [mss 1440,sackOK,TS val 769170023 ecr 3563370021,nop,wscale 7], length 0
+  23:47:15.990354 IP6 zh1.prod.internetputzen.com.52535 > db2.zrh.internetputzen.com.9160: Flags [R], seq 3004007398, win 0, length 0
+  
+  It is terminated by the client, so this is probably an error in the way we invoke the connection.
+type: :bugfix
+component: shortn
+release: "0.11"
+reporter: Caoimhe Chaos <caoimhechaos@protonmail.com>
+status: :unstarted
+disposition: 
+creation_time: 2013-12-02 01:10:44.480340 Z
+references: []
+
+id: e9b5fe3023b94720af76ff7bd103ab799c3275a0
+log_events: 
+- - 2013-12-02 01:10:46.330385 Z
+  - Caoimhe Chaos <caoimhechaos@protonmail.com>
+  - created
+  - ""
