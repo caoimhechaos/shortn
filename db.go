@@ -57,7 +57,8 @@ func NewCassandraStore(servaddr string, corpus string) *CassandraStore {
 	var client *cassandra.RetryCassandraClient
 	var path *cassandra.ColumnPath
 
-	client, err = cassandra.NewRetryCassandraClient(servaddr)
+	client, err = cassandra.NewRetryCassandraClientTimeout(servaddr,
+		10*time.Second)
 	if err != nil {
 		log.Print("Error opening connection to ", servaddr, ": ", err)
 		return nil
