@@ -7,13 +7,17 @@ components:
 releases: 
 - !ditz.rubyforge.org,2008-03-06/release 
   name: "0.11"
-  status: :unreleased
-  release_time: 
+  status: :released
+  release_time: 2013-12-02 01:35:26.415133 Z
   log_events: 
   - - 2013-12-02 01:07:06.500651 Z
     - Caoimhe Chaos <caoimhechaos@protonmail.com>
     - created
     - Bugfix release
+  - - 2013-12-02 01:35:26.415149 Z
+    - Caoimhe Chaos <caoimhechaos@protonmail.com>
+    - released
+    - Release 0.11 is ready to go out.
 - !ditz.rubyforge.org,2008-03-06/release 
   name: "1.0"
   status: :unreleased
