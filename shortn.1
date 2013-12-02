@@ -16,6 +16,7 @@ shortn \- URL shortener web application
 \fI[\-\-exported\-name=name]\fR
 \fI[\-\-help]\fR
 \fI[\-\-key=path]\fR
+\fI[\-\-keyspace=name]\fR
 \fI[\-\-template\-dir=path]\fR
 .SH DESCRIPTION
 .PP
@@ -105,6 +106,10 @@ lock service under the given service name.
 \fB\-\-help\fR
 Display the usage instructions for
 .BR shortn .
+.TP
+\fB\-\-keyspace=name\fR
+Set the keyspace to read from to
+.IR name .
 .TP
 \fB\-\-template\-dir=path\fR
 Indicate the path where the HTML template files for
