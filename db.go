@@ -32,6 +32,8 @@
 package main
 
 import (
+	"github.com/golang/protobuf/proto"
+
 	"crypto/sha256"
 	"database/cassandra"
 	"encoding/base64"
@@ -64,11 +66,7 @@ func NewCassandraStore(servaddr string, keyspace, corpus string) *CassandraStore
 		return nil
 	}
 
-	ire, err := client.SetKeyspace(keyspace)
-	if ire != nil {
-		log.Print("Error setting keyspace to ", corpus, ": ", ire.Why)
-		return nil
-	}
+	err = client.SetKeyspace(keyspace)
 	if err != nil {
 		log.Print("Error setting keyspace to ", corpus, ": ", err)
 		return nil
@@ -89,33 +87,10 @@ func NewCassandraStore(servaddr string, keyspace, corpus string) *CassandraStore
 
 func (conn *CassandraStore) LookupURL(shortname string) (string, error) {
 	// Ensure the connection is not currently being initialized.
-	col, ire, nfe, ue, te, err := conn.client.Get([]byte(shortname),
-		conn.path, cassandra.ConsistencyLevel_ONE)
+	col, err := conn.client.Get([]byte(shortname), conn.path,
+		cassandra.ConsistencyLevel_ONE)
 
 	if col == nil {
-		if ire != nil {
-			log.Println("Invalid request: ", ire.Why)
-			num_errors.Add("invalid-request", 1)
-			return "", errors.New(ire.Why)
-		}
-
-		if nfe != nil {
-			num_notfound.Add(1)
-			return "", nil
-		}
-
-		if ue != nil {
-			log.Println("Unavailable")
-			num_errors.Add("unavailable", 1)
-			return "", errors.New("Unavailable")
-		}
-
-		if te != nil {
-			log.Println("Request to database backend timed out")
-			num_errors.Add("timeout", 1)
-			return "", errors.New("Timed out")
-		}
-
 		if err != nil {
 			log.Print("Error getting column: ", err.Error(), "\n")
 			num_errors.Add("os-error", 1)
@@ -148,30 +123,12 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err erro
 
 	col.Name = []byte("url")
 	col.Value = []byte(url)
-	col.Timestamp = time.Now().Unix()
-	col.Ttl = 0
+	col.Timestamp = proto.Int64(time.Now().Unix())
+	col.Ttl = proto.Int32(0)
 
 	// TODO(caoimhe): Use a mutation pool and locking here!
-	ire, ue, te, err := conn.client.Insert([]byte(shorturl), &cp, &col,
+	err = conn.client.Insert([]byte(shorturl), &cp, &col,
 		cassandra.ConsistencyLevel_ONE)
-	if ire != nil {
-		log.Println("Invalid request: ", ire.Why)
-		num_errors.Add("invalid-request", 1)
-		err = errors.New(ire.String())
-		return
-	}
-	if ue != nil {
-		log.Println("Unavailable")
-		num_errors.Add("unavailable", 1)
-		err = errors.New(ue.String())
-		return
-	}
-	if te != nil {
-		log.Println("Request to database backend timed out")
-		num_errors.Add("timeout", 1)
-		err = errors.New(te.String())
-		return
-	}
 	if err != nil {
 		log.Println("Generic error: ", err)
 		num_errors.Add("os-error", 1)
@@ -180,26 +137,8 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err erro
 	}
 	col.Name = []byte("owner")
 	col.Value = []byte(owner)
-	ire, ue, te, err = conn.client.Insert([]byte(shorturl), &cp, &col,
+	err = conn.client.Insert([]byte(shorturl), &cp, &col,
 		cassandra.ConsistencyLevel_ONE)
-	if ire != nil {
-		log.Println("Invalid request: ", ire.Why)
-		num_errors.Add("invalid-request", 1)
-		err = errors.New(ire.String())
-		return
-	}
-	if ue != nil {
-		log.Println("Unavailable")
-		num_errors.Add("unavailable", 1)
-		err = errors.New(ue.String())
-		return
-	}
-	if te != nil {
-		log.Println("Request to database backend timed out")
-		num_errors.Add("timeout", 1)
-		err = errors.New(te.String())
-		return
-	}
 	if err != nil {
 		log.Println("Generic error: ", err)
 		num_errors.Add("os-error", 1)

@@ -32,6 +32,9 @@
 package main
 
 import (
+	"ancient-solutions.com/ancientauth"
+	"golang.org/x/net/context"
+
 	"expvar"
 	"flag"
 	"log"
@@ -40,9 +43,7 @@ import (
 	"os"
 	"strings"
 	"text/template"
-
-	"ancient-solutions.com/ancientauth"
-	"ancient-solutions.com/doozer/exportedservice"
+	"time"
 )
 
 var store *CassandraStore
@@ -146,7 +147,10 @@ func main() {
 	var cassandra_server, keyspace, corpus string
 	var ca, pub, priv, authserver string
 	var bindto, templatedir, servicename string
-	var doozer_uri, doozer_buri string
+	var etcd_uri string
+	var etcd_ttl time.Duration
+	var keyserver_uri string
+	var keycache_size int
 	var exporter *exportedservice.ServiceExporter
 	var err error
 
@@ -166,16 +170,19 @@ func main() {
 		"Path to the X.509 certificate")
 	flag.StringVar(&priv, "key", "shortn.key",
 		"Path to the X.509 private key file")
+	flag.StringVar(&keyserver_uri, "keyserver-uri", "",
+		"URI for keyserver to retrieve X.509 certificates")
+	flag.IntVar(&keycache_size, "keycache-size", 0,
+		"Number of X.509 keys to keep in LRU cache")
 	flag.StringVar(&templatedir, "template-dir", "/var/www/templates",
 		"Path to the HTML templates for the web interface")
 	flag.StringVar(&authserver, "auth-server",
 		"login.ancient-solutions.com",
 		"The server to send the user to")
-	flag.StringVar(&doozer_uri, "doozer-uri", os.Getenv("DOOZER_URI"),
-		"Doozer URI to connect to")
-	flag.StringVar(&doozer_buri, "doozer-boot-uri",
-		os.Getenv("DOOZER_BOOT_URI"),
-		"Doozer Boot URI to find named clusters")
+	flag.StringVar(&etcd_uri, "etcd-uri", os.Getenv("ETCD_URI"),
+		"etcd URI to connect to")
+	flag.DurationVar(&etcd_ttl, "etcd-ttl", 30*time.Second,
+		"TTL of the etcd service record")
 	flag.StringVar(&servicename, "exported-name", "",
 		"Name to export the service as in Doozer")
 	flag.Parse()
@@ -197,8 +204,8 @@ func main() {
 		"/notfound.tmpl"))
 	fourohfour_templ.Funcs(fmap)
 
-	authenticator, err = ancientauth.NewAuthenticator("URL Shortener", pub,
-		priv, ca, authserver)
+	authenticator, err = ancientauth.NewAuthenticator("URL Shortener",
+		pub, priv, ca, authserver, keyserver_uri, keycache_size)
 	if err != nil {
 		log.Fatal("NewAuthenticator: ", err)
 	}
@@ -211,14 +218,16 @@ func main() {
 	http.Handle("/", http.HandlerFunc(Shortn))
 
 	if len(servicename) > 0 {
-		exporter, err = exportedservice.NewExporter(doozer_uri,
-			doozer_buri)
+		var ctx context.Context = context.Background()
+
+		exporter, err = exportedservice.NewExporter(ctx,
+			etcd_uri, int64(etcd_ttl.Seconds()))
 		if err != nil {
 			log.Fatal("NewExporter: ", err)
 		}
 
-		err = exporter.ListenAndServeNamedHTTP(servicename, bindto,
-			nil)
+		err = exporter.ListenAndServeNamedHTTP(ctx, servicename,
+			bindto, nil)
 		if err != nil {
 			log.Fatal("ListenAndServeNamedHTTP: ", err)
 		}
