@@ -147,7 +147,6 @@ func main() {
 	var cassandra_server, keyspace, corpus string
 	var ca, pub, priv, authserver string
 	var bindto, templatedir, servicename string
-	var etcd_uri string
 	var etcd_ttl time.Duration
 	var keyserver_uri string
 	var keycache_size int
@@ -179,12 +178,10 @@ func main() {
 	flag.StringVar(&authserver, "auth-server",
 		"login.ancient-solutions.com",
 		"The server to send the user to")
-	flag.StringVar(&etcd_uri, "etcd-uri", os.Getenv("ETCD_URI"),
-		"etcd URI to connect to")
 	flag.DurationVar(&etcd_ttl, "etcd-ttl", 30*time.Second,
 		"TTL of the etcd service record")
 	flag.StringVar(&servicename, "exported-name", "",
-		"Name to export the service as in Doozer")
+		"Name to export the service as in etcd")
 	flag.Parse()
 
 	if help {
@@ -220,10 +217,10 @@ func main() {
 	if len(servicename) > 0 {
 		var ctx context.Context = context.Background()
 
-		exporter, err = exportedservice.NewExporter(ctx,
-			etcd_uri, int64(etcd_ttl.Seconds()))
+		exporter, err = exportedservice.NewFromDefault(ctx,
+			int64(etcd_ttl.Seconds()))
 		if err != nil {
-			log.Fatal("NewExporter: ", err)
+			log.Fatal("NewFromDefault: ", err)
 		}
 
 		err = exporter.ListenAndServeNamedHTTP(ctx, servicename,
