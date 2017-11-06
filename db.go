@@ -124,7 +124,7 @@ func (conn *CassandraStore) AddURL(url, owner string) (shorturl string, err erro
 	col.Name = []byte("url")
 	col.Value = []byte(url)
 	col.Timestamp = proto.Int64(time.Now().Unix())
-	col.Ttl = proto.Int32(0)
+	col.TTL = proto.Int32(0)
 
 	// TODO(caoimhe): Use a mutation pool and locking here!
 	err = conn.client.Insert([]byte(shorturl), &cp, &col,
